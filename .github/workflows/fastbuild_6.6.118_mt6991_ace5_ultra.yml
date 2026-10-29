@@ -629,7 +629,24 @@ jobs:
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          set -o pipefail
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image 2>&1 | tee build.log
+          build_status=${PIPESTATUS[0]}
+          if [ "$build_status" -ne 0 ]; then
+            echo ""
+            echo "==================== 编译错误摘要 ===================="
+            echo "[1] 编译器 error / fatal error:"
+            grep -n -E "(error|fatal error):" build.log | head -60
+            echo ""
+            echo "[2] 未定义引用 / 缺失文件 / 其他致命错误:"
+            grep -n -E "undefined reference|No such file|No rule to make target|recipe for target|\*\*\* .*Error" build.log | head -40
+            echo ""
+            echo "[3] 最后 80 行原始日志:"
+            tail -n 80 build.log
+            echo "======================================================"
+            echo "编译失败，跳过后续时间校验与状态输出。"
+            exit $build_status
+          fi
           
           # 编译后时间劫持二次校验
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
